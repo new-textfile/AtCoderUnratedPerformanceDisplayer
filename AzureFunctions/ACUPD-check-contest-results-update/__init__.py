@@ -7,10 +7,12 @@ import requests
 from bs4 import BeautifulSoup
 from ..ACUPDlib import path
 from ..ACUPDlib.type import FetchedContests, UserResult
+from ..ACUPDlib.updatecheck import check_update_status
 from typing import List
 
-def main(name:str) -> None:
-    if name not in ["ABC","ARC","AGC"]: return
+def main(name:str) -> str:
+    if not check_update_status(): return ""
+    if name not in ["ABC","ARC","AGC"]: return ""
     logging.info("[ACUPD-Updater(check-contest-results-update)]<" + name + "> start")
 
     check_status = "incomplete"
@@ -18,12 +20,12 @@ def main(name:str) -> None:
         with open(path.fetch_tempdata, "r") as f:
             check_status = json.load(f)["status"]    
 
-    if check_status == "completed": return
+    if check_status == "completed": return ""
     elif check_status == "check failed":
         if name == "AGC":
             with open(path.fetch_tempdata, "w") as f:
                 json.dump({"status": "incomplete"}, f, indent=4)
-        return
+        return ""
 
     sleep_period = 0.5 #request間隔(秒)
     fetched_contests: FetchedContests #取得済みコンテスト
@@ -74,4 +76,6 @@ def main(name:str) -> None:
             json.dump({"status": "completed"}, f, indent=4)
 
     logging.info("[ACUPD-Updater(check-contest-results-update)]<" + name + "> end")  
+
+    return ""
     

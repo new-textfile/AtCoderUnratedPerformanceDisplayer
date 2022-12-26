@@ -2,9 +2,13 @@ import logging
 import json
 import glob
 import os
+import time
 import shutil
+import requests
+from bs4 import BeautifulSoup
 from ..ACUPDlib import path
-from ..ACUPDlib.type import UserResult
+from ..ACUPDlib.type import UserResult, FetchedContests
+from ..ACUPDlib.updatecheck import check_update_status
 from typing import List, Dict, Set
 
 #Azure Durable Functions 実行用の一時ファイルを削除
@@ -18,6 +22,7 @@ def delete_tempfiles() -> None:
     if os.path.exists(path.renamed_users): os.remove(path.renamed_users)
     if os.path.exists(path.username_changes): os.remove(path.username_changes)
     if os.path.exists(path.fetch_tempdata): os.remove(path.fetch_tempdata)
+    if os.path.exists(path.upload_tempdata): os.remove(path.upload_tempdata)
 
     for filepath in glob.glob(path.new_results_folder + "*.*"):
         os.remove(filepath)
@@ -147,8 +152,11 @@ def copy_userdata(startidx:int, endidx:int) -> None:
         if os.path.exists(path.userperfs_folder + username + ".json"):
             shutil.copyfile(path.userperfs_folder + username + ".json", path.new_userperfs_folder + username + ".json")
         
-        shutil.copyfile(path.useraperfs_folder + username + ".json", path.new_useraperfs_folder + username + ".json") 
-        shutil.copyfile(path.userinnerperfs_folder + username + ".json", path.new_userinnerperfs_folder + username + ".json")        
+        if os.path.exists(path.useraperfs_folder + username + ".json"):
+            shutil.copyfile(path.useraperfs_folder + username + ".json", path.new_useraperfs_folder + username + ".json") 
+        
+        if os.path.exists(path.userinnerperfs_folder + username + ".json"):
+            shutil.copyfile(path.userinnerperfs_folder + username + ".json", path.new_userinnerperfs_folder + username + ".json")        
 
     logging.info("[ACUPD-Updater(copy_userdata)] <idx: " + str(startidx) + "-" + str(endidx) + "> copy_userdata finished")
 
@@ -160,36 +168,81 @@ def move_temp_results() -> None:
         shutil.move(filepath, path.new_results_folder + filename)
 
 
-def main(name: str) -> None:
+def update_update_status() -> None:
+    
+    fetched_contests: FetchedContests
+    with open(path.fetched_contests, "r") as f:
+        fetched_contests = json.load(f)
 
-    if name.split("@")[0] == "create_tempfolders":
-        create_tempfolders()
+    sleep_period = 1
 
-    elif name.split("@")[0] == "delete_tempfiles":
-        delete_tempfiles()
+    logging.info("[ACUPD-Updater(update_update_status)] now fetching...")
+    time.sleep(sleep_period)
+    contests_archive_url = "https://atcoder.jp/contests/archive"
+    contests_archive_params = {"ratedType": 0, "lang": "ja"}
+    contests_archive_html = requests.get(contests_archive_url, params=contests_archive_params)
+    contests_archive_soup = BeautifulSoup(contests_archive_html.content, "html.parser")
 
-    elif name.split("@")[0] == "move_temp_results":
-        move_temp_results()
+    contests_list = contests_archive_soup.find_all("tr")
 
-    elif name.split("@")[0] == "update_results":
-        move_resultfiles()
+    status = False
+    if contests_list != []:
+        for contest in reversed(contests_list):
+            if len(contest.find_all("td")) < 4: continue
+            if contest.find_all("td")[3].text == "-": continue 
+            if contest.find_all("td")[1].find_all("span")[0].text != "Ⓐ": continue
 
-    elif name.split("@")[0] == "update_fetched_contests":
-        update_fetched_contests()
+            contest_name = contest.find_all("td")[1].find("a").get("href").split('/')[2]
 
-    elif name.split("@")[0] == "update_defaultaperfs":
-        update_defaultaperfs()
+            if contest_name not in fetched_contests["contests"]:
+                logging.info("[ACUPD-Updater(update_update_status)] now fetching contest result...")
+                time.sleep(sleep_period)
+                contest_result_url = "https://atcoder.jp/contests/" + contest_name + "/results/json"
+                contest_result_list = json.loads(requests.get(contest_result_url).content)
+                status = (len(contest_result_list) > 0)
+                break
 
-    elif name.split("@")[0] == "update_renamed_users":
-        update_renamed_users()
+    with open(path.update_status, "w") as f:
+        json.dump({"status": status}, f, indent=4)
+    
+    logging.info("[ACUPD-Updater(update_update_status)] finished")
 
-    elif name.split("@")[0] == "update_contestants":
-        startidx = int(name.split("@")[1].split("-")[0])
-        endidx = int(name.split("@")[1].split("-")[1])
-        update_contestants(startidx,endidx)
 
-    elif name.split("@")[0] == "copy_userdata":
-        startidx = int(name.split("@")[1].split("-")[0])
-        endidx = int(name.split("@")[1].split("-")[1])
-        copy_userdata(startidx,endidx)
+def main(name: str) -> str:
 
+    if name.split("@")[0] == "update_update_status":
+        update_update_status()
+    
+    elif check_update_status():
+        if name.split("@")[0] == "create_tempfolders":
+            create_tempfolders()
+
+        elif name.split("@")[0] == "delete_tempfiles":
+            delete_tempfiles()
+
+        elif name.split("@")[0] == "move_temp_results":
+            move_temp_results()
+
+        elif name.split("@")[0] == "update_results":
+            move_resultfiles()
+
+        elif name.split("@")[0] == "update_fetched_contests":
+            update_fetched_contests()
+
+        elif name.split("@")[0] == "update_defaultaperfs":
+            update_defaultaperfs()
+
+        elif name.split("@")[0] == "update_renamed_users":
+            update_renamed_users()
+
+        elif name.split("@")[0] == "update_contestants":
+            startidx = int(name.split("@")[1].split("-")[0])
+            endidx = int(name.split("@")[1].split("-")[1])
+            update_contestants(startidx,endidx)
+
+        elif name.split("@")[0] == "copy_userdata":
+            startidx = int(name.split("@")[1].split("-")[0])
+            endidx = int(name.split("@")[1].split("-")[1])
+            copy_userdata(startidx,endidx)
+
+    return ""

@@ -4,25 +4,86 @@
 // @version      1.0
 // @description  Unrated参加したRated Algoコンテストのパフォーマンス推定値を表示します。
 // @author       new_textfile
-// @match        https://atcoder.jp/users/*/history*
+// @match        https://atcoder.jp/users/*
 // @exclude      https://atcoder.jp/users/*/history?*contestType=heuristic*
 // @grant        none
+// @license      MIT
 // ==/UserScript==
+
+/*
+MIT License
+
+Copyright (c) 2022 new_textfile
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 
 (async function() {
     'use strict';
 
-    if(location.href.match(/https:\/\/atcoder.jp\/users\/.*\/history\/share\/.*/g) === null){
-            await displayperf_competition_history(); //コンテスト成績表ページについての処理を行う
+    if(location.href.match(/https:\/\/atcoder.jp\/users\/.*\/history\/share\/.*/g) !== null){
+        await displayperf_contest_result(); //コンテスト成績証ページについての処理を行う
+    }
+    else if(location.href.match(/https:\/\/atcoder.jp\/users\/.*\/history.*/g) !== null){
+        await displayperf_competition_history(); //コンテスト成績表ページについての処理を行う
     }
     else{
-        await displayperf_contest_result(); //コンテスト成績証ページについての処理を行う
+        //ユーザーのプロフィールページを訪れた時点でパフォーマンスのfetchを行っておく
+        let username = document.querySelector("a.username span").innerText;
+        await fetch_userperfs(username);
     }
 
 })();
 
+async function fetch_userperfs(username){
+    let url = "https://new-textfile.github.io/AtCoderUnratedPerformances/userperfs/" + username + ".json";
+
+    let fetched_data = JSON.parse(localStorage.getItem("atcoder_unrated_perf_displayer-" + username));
+    let fetch_flag = false;
+
+    if(fetched_data === null){ //localStorageに保存されていない場合
+        fetch_flag = true;
+    }
+    else{ //前回のfetchから10分以上経っている場合
+        let last_updated_date = new Date(fetched_data.last_update);
+        let now_date = new Date();
+        let minutes_diff = (now_date.getTime() - last_updated_date.getTime()) / (1000.0 * 60.0);
+        fetch_flag = (minutes_diff >= 10.0);
+    }
+
+    if(fetch_flag){
+        //Unratedコンテストのパフォーマンス推定値一覧をgithubから取得
+        let userperfs_html = await fetch(url);
+        if(!userperfs_html.ok) return; //fetchに失敗したら何もせず終了
+        let userperfs = await (await fetch(url)).json();
+
+        //fetchを行った時刻と取得したパフォーマンスをlocalStorageに保存する
+        let savedata = {"last_update": new Date(), "userperfs": userperfs};
+        localStorage.setItem("atcoder_unrated_perf_displayer-" + username, JSON.stringify(savedata));
+    }
+
+    return;
+}
+
 async function displayperf(userperfs){
     let rows_cnt = document.querySelectorAll("tr").length;
+    let rating;
 
     for(let rownum = rows_cnt-1; rownum >= 1; rownum--){
         let contest = document.querySelectorAll("tr")[rownum].querySelectorAll("td");
@@ -30,14 +91,13 @@ async function displayperf(userperfs){
         let is_rated = (contest[5].getAttribute("data-search") == "[RATED]");
 
         if(is_rated){
-            // Unratedコンテストの新Ratingの箇所を埋めたい場合はコメントを外す
-            // rating = contest[4].innerText;
+            rating = contest[4].innerText;
             continue;
         }
 
         if(userperfs[contest_name] !== undefined) contest[3].innerText = userperfs[contest_name];
 
-        // Unratedコンテストの新Ratingの箇所を埋めたい場合はコメントを外す その2
+        // Unratedコンテストの新Ratingの列を埋めたい場合はコメントを外す
         // contest[4].innerText = rating;
     }
     return;
@@ -47,40 +107,13 @@ async function displayperf_competition_history(){
     if(document.querySelector("a.username span") === null) return;
 
     let username = document.querySelector("a.username span").innerText;
-    let url = "https://new-textfile.github.io/AtCoderUnratedPerformances/userperfs/" + username + ".json";
 
-    //Unratedコンテストのパフォーマンス推定値一覧をlocalStorageまたはgithubから取得
-    let userperfs = JSON.parse(localStorage.getItem("AtCoderUnratedPerfDisplayer-" + username));
-    if(userperfs === null){
-        let userperfs_html = await fetch(url);
-
-        //fetchに失敗したら何もせず終了(1回もUnrated参加していないなどの場合に起こり得る)
-        if(!userperfs_html.ok) return;
-        userperfs = await (userperfs_html).json();
-
-        //他のuserscriptとの兼ね合いもあるため, localStorageに保存する
-        localStorage.setItem("AtCoderUnratedPerfDisplayer-" + username, JSON.stringify(userperfs));
-    }
+    //Unratedコンテストのパフォーマンス推定値一覧を取得
+    await fetch_userperfs(username);
+    let userperfs = JSON.parse(localStorage.getItem("atcoder_unrated_perf_displayer-" + username)).userperfs;
 
     //userperfsを参照して, コンテスト成績表のパフォーマンスの列を書き換える
     displayperf(userperfs);
-
-    //github上にあるパフォーマンス一覧を取得
-    await new Promise(resolve => setTimeout(resolve, 1000)); //sleep (1000ms)
-    let remote_userperfs_html = await fetch(url);
-    if(!remote_userperfs_html.ok) return; //fetchに失敗したら何もせず終了
-    let remote_userperfs = await (remote_userperfs_html).json();
-
-    //github上とlocalStorageでパフォーマンス一覧が異なる場合, localStorageの値をgithub上の値で上書きする
-    let remote_userperfs_json = JSON.stringify(Object.keys(remote_userperfs).sort());
-    let userperfs_json = JSON.stringify(Object.keys(userperfs).sort());
-    if(remote_userperfs_json !== userperfs_json){
-        localStorage.setItem("AtCoderUnratedPerfDisplayer-" + username, JSON.stringify(remote_userperfs));
-
-        //github上のuserperfsを参照して, コンテスト成績表のパフォーマンスの列を書き換える
-        displayperf(remote_userperfs);
-    }
-
 }
 
 async function displayperf_contest_result(){
@@ -90,15 +123,9 @@ async function displayperf_contest_result(){
     let contest = document.querySelectorAll("table tr")[1].querySelector("a");
     let contest_name = contest.href.split("/")[4];
 
-    //Unratedコンテストのパフォーマンス推定値一覧をlocalStorageまたはgithubから取得
-    let userperfs = JSON.parse(localStorage.getItem("AtCoderUnratedPerfDisplayer-" + username));
-    if(userperfs === null){
-        let url = "https://new-textfile.github.io/AtCoderUnratedPerformances/userperfs/" + username + ".json";
-
-        let userperfs_html = await fetch(url);
-        if(!userperfs_html.ok) return; //fetchに失敗したら何もせず終了
-        userperfs = await (await fetch(url)).json();
-    }
+    //Unratedコンテストのパフォーマンス推定値一覧を取得
+    await fetch_userperfs(username);
+    let userperfs = JSON.parse(localStorage.getItem("atcoder_unrated_perf_displayer-" + username)).userperfs;
 
     if(userperfs[contest_name] !== undefined){
         //コンテスト成績証にパフォーマンスの行を追加

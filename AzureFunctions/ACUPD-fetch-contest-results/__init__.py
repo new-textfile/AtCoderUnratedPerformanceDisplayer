@@ -8,11 +8,12 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from ..ACUPDlib import path
 from ..ACUPDlib.type import FetchedContests, ContestInfo
+from ..ACUPDlib.updatecheck import check_update_status
 from typing import List, Dict
 
 def fetch_contest_results(ratedtype_str: str, ratedtype: int, savetype: str) -> None:
 
-    sleep_period: float = 0.5 #request間隔(秒)
+    sleep_period: float = 1 #request間隔(秒)
     fetched_contests: FetchedContests #取得済みコンテスト
     new_contests: List[str] = [] #今回新たに追加されるコンテスト
     contests_info: Dict[str, ContestInfo] #コンテスト情報(日時・rated範囲)
@@ -118,7 +119,9 @@ def fetch_contest_results(ratedtype_str: str, ratedtype: int, savetype: str) -> 
     logging.info("[ACUPD-Updater(fetch_contest_results)] finished!")
 
 
-def main(name:str) -> None:
+def main(name:str) -> str:
+    if not check_update_status(): return ""
+
     ratedtype = {"ABC":1, "ARC":2, "AGC":3}
     ratedtype_str = name.split("@")[0]
     savetype = name.split("@")[1]
@@ -130,3 +133,5 @@ def main(name:str) -> None:
 
     if fetchflag:
         fetch_contest_results(ratedtype_str, ratedtype[ratedtype_str], savetype)
+
+    return ""

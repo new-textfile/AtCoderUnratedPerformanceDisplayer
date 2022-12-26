@@ -5,9 +5,11 @@ import shutil
 import os
 from ..ACUPDlib import path
 from ..ACUPDlib.type import UserResult
+from ..ACUPDlib.updatecheck import check_update_status
 from typing import List, Set, Dict
 
-def main(name:str) -> None:
+def main(name:str) -> str:
+    if not check_update_status(): return ""
     logging.info("[ACUPD-Updater(correct_username_changes)] loading start")
 
     #fetched_contestsを取得
@@ -70,3 +72,5 @@ def main(name:str) -> None:
         json.dump(username_changes, f, indent=4)
 
     logging.info("[ACUPD-Updater(correct_username_changes)] correct finished")
+    
+    return ""

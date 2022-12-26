@@ -9,7 +9,7 @@ from collections import deque
 from decimal import Decimal, ROUND_HALF_UP
 from ..ACUPDlib import path
 from ..ACUPDlib.type import ContestInfo, CalcTempData, UserResult, InnerPerfInfo
-
+from ..ACUPDlib.updatecheck import check_update_status
 
 INF = math.pow(10,9)
 
@@ -387,7 +387,8 @@ def save_userperfs(default_aperf: int, startidx: int, endidx: int) -> None:
     logging.info("[ACUPD-Updater(calculate-save_userperfs)] <default_aperf: " + str(default_aperf)+ ", idx: " + str(startidx) + " - " + str(endidx)  + "> saving finished")
 
 
-def main(name:str) -> None:
+def main(name:str) -> str:
+    if not check_update_status(): return ""
 
     if name.split("@")[0] == "init":
         calc_init()
@@ -397,7 +398,7 @@ def main(name:str) -> None:
         tempdata:CalcTempData
         with open(path.calculate_tempdata, "r") as f:
             tempdata = json.load(f)
-        if tempdata["finished"]: return
+        if tempdata["finished"]: return ""
 
         if name.split("@")[0] == "perf":
             startidx = int(name.split("@")[1].split("-")[0])
@@ -417,4 +418,6 @@ def main(name:str) -> None:
             
             elif name.split("@")[0] == "save" and tempdata["is_matched"]:
                 save_userperfs(default_aperf,startidx,endidx)
+    
+    return ""
 
