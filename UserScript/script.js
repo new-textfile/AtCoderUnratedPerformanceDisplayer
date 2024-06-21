@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AtCoderUnratedPerfDisplayer
 // @namespace    https://new-textfile.github.io/
-// @version      1.0
+// @version      1.0.1
 // @description  Unrated参加したRated Algoコンテストのパフォーマンス推定値を表示します。
 // @author       new_textfile
 // @match        https://atcoder.jp/users/*
@@ -51,7 +51,7 @@ SOFTWARE.
 
 })();
 
-async function fetch_userperfs(username){
+async function fetch_userperfs(username, update_flag=false){
     let url = "https://new-textfile.github.io/AtCoderUnratedPerformances/userperfs/" + username + ".json";
 
     let fetched_data = JSON.parse(localStorage.getItem("atcoder_unrated_perf_displayer-" + username));
@@ -60,7 +60,7 @@ async function fetch_userperfs(username){
     if(fetched_data === null){ //localStorageに保存されていない場合
         fetch_flag = true;
     }
-    else{ //前回のfetchから10分以上経っている場合
+    else if(update_flag){ //前回のfetchから10分以上経っている場合
         let last_updated_date = new Date(fetched_data.last_update);
         let now_date = new Date();
         let minutes_diff = (now_date.getTime() - last_updated_date.getTime()) / (1000.0 * 60.0);
@@ -114,6 +114,9 @@ async function displayperf_competition_history(){
 
     //userperfsを参照して, コンテスト成績表のパフォーマンスの列を書き換える
     displayperf(userperfs);
+
+    //パフォーマンス推定値一覧を更新
+    await fetch_userperfs(username, true);
 }
 
 async function displayperf_contest_result(){
