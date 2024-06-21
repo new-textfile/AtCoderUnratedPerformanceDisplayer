@@ -11,7 +11,6 @@ class CalcTempData(TypedDict):
     pred_default_aperf: int
     user_latest_aperf: Dict[str, float]
     aperflist: List[float]
-    ratedplace: int
     user_innerperf: Dict[str, float]
     user_perf: Dict[str, float]
     finished: bool
